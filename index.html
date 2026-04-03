@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nano Matrix // Integrated Gesture UX V19.0</title>
+    <title>Nano Matrix // Pinch Trigger UX V20.0</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
@@ -53,7 +53,7 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            filter: brightness(1);
+            filter: brightness(0.8);
             transition: filter 0.4s;
         }
 
@@ -113,23 +113,23 @@
 
         #cursor {
             position: fixed;
-            width: 34px;
-            height: 34px;
-            border: 2px solid rgba(255,255,255,0.4);
+            width: 30px;
+            height: 30px;
+            border: 1px solid rgba(255,255,255,0.6);
             border-radius: 50%;
             pointer-events: none;
             z-index: 10001;
             display: none;
             transform: translate(-50%, -50%);
-            transition: transform 0.1s ease-out, width 0.2s, height 0.2s;
+            transition: width 0.2s, height 0.2s, background-color 0.2s;
         }
         
-        #cursor.tapping {
-            width: 20px;
-            height: 20px;
-            background-color: white;
-            border-color: white;
-            box-shadow: 0 0 15px white;
+        #cursor.pinched {
+            width: 12px;
+            height: 12px;
+            background-color: #fff;
+            border-color: #fff;
+            box-shadow: 0 0 20px rgba(255,255,255,0.8);
         }
 
         #gesture-hint {
@@ -139,17 +139,18 @@
             transform: translateX(-50%);
             font-size: 10px;
             letter-spacing: 2px;
-            opacity: 0.5;
+            opacity: 0.6;
             text-transform: uppercase;
             pointer-events: none;
             text-align: center;
+            line-height: 1.8;
         }
     </style>
 </head>
 <body>
 
 <div id="setup-overlay">
-    <h1 style="margin-bottom: 30px; letter-spacing: 10px; font-weight: 300;">MATRIX V19</h1>
+    <h1 style="margin-bottom: 30px; letter-spacing: 10px; font-weight: 300;">MATRIX V20</h1>
     <div style="display:flex;">
         <div class="btn" onclick="start('mouse')">MOUSE</div>
         <div class="btn" onclick="start('gesture')" style="background:white; color:black; border:none;">GESTURE</div>
@@ -159,7 +160,7 @@
 <div id="stage">
     <div id="grid"></div>
     <div id="cursor"></div>
-    <div id="gesture-hint">TAP TO OPEN / CLOSE<br>SWIPE TO SCROLL GALLERY</div>
+    <div id="gesture-hint">PINCH TO OPEN OR CLOSE<br>SWIPE HAND TO SCROLL GALLERY</div>
 </div>
 
 <script>
@@ -171,12 +172,13 @@
         LERP: 0.1, 
         REPULSION_RADIUS: 320, 
         REPULSION_STRENGTH: 130,
-        FRICTION: 0.95 // 挥手滚动的摩擦系数
+        FRICTION: 0.94,
+        PINCH_THRESHOLD: 0.04 // 判定捏合的距离阈值
     };
 
     let items = [];
     let scrollX = 0;
-    let velocityX = 0; // 当前滚动速度
+    let velocityX = 0; 
     let totalW = 0;
     let mouse = { x: -100, y: -100 };
     let activeLeft = null;
@@ -227,7 +229,6 @@
     function handleSelect(obj) {
         const sw = window.innerWidth;
         
-        // 如果点击的是已经激活的图片，则关闭它
         if (obj.active) {
             obj.active = false;
             obj.el.classList.remove('active');
@@ -236,7 +237,6 @@
             return;
         }
 
-        // 计算当前位置确定 side
         let gx = (obj.bx + scrollX) % totalW;
         if (gx < -CONFIG.W) gx += totalW;
         if (gx > totalW - CONFIG.W) gx -= totalW;
@@ -253,12 +253,10 @@
     }
 
     function update() {
-        // 应用滚动逻辑
-        // 如果没有挥手产生的速度，保持基础滚动速度
         if (Math.abs(velocityX) < 0.1) {
             velocityX = -CONFIG.BASE_SPEED;
         } else {
-            velocityX *= CONFIG.FRICTION; // 惯性衰减
+            velocityX *= CONFIG.FRICTION;
         }
         
         scrollX += velocityX;
@@ -345,57 +343,58 @@
         hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
 
         let lastAction = 0;
-        let zHistory = [];
         let xHistory = []; 
+        let isPinching = false;
 
         hands.onResults((results) => {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const lm = results.multiHandLandmarks[0];
                 const now = Date.now();
                 
+                const thumbTip = lm[4];
                 const indexTip = lm[8];
                 const palmCenter = lm[9]; 
                 
-                // 1. 光标跟随
+                // 1. 光标跟随 (食指指尖)
                 mouse.x = (1 - indexTip.x) * window.innerWidth;
                 mouse.y = indexTip.y * window.innerHeight;
                 cursorEl.style.display = 'block';
 
-                // 2. 空气点触 (用于 打开 或 关闭 图片)
-                zHistory.push(indexTip.z);
-                if (zHistory.length > 5) zHistory.shift();
-                const zDepthChange = zHistory[0] - indexTip.z; 
-                const isTappingForward = zDepthChange > 0.05; 
+                // 2. 捏合识别 (Pinch) - 选中或关闭
+                const dist = Math.sqrt(
+                    Math.pow(thumbTip.x - indexTip.x, 2) + 
+                    Math.pow(thumbTip.y - indexTip.y, 2)
+                );
 
-                if (isTappingForward && now - lastAction > 700) {
-                    cursorEl.classList.add('tapping');
-                    
-                    // 寻找当前悬停的图片（包括已激活的和背景中的）
-                    const target = items.find(i => {
-                        const dist = Math.sqrt(Math.pow(i.cx - mouse.x, 2) + Math.pow(i.cy - mouse.y, 2));
-                        // 激活态图片范围更大一点方便点选关闭
-                        return i.active ? dist < 100 : dist < 50;
-                    });
-                    
-                    if (target) handleSelect(target);
-                    lastAction = now;
-                    setTimeout(() => cursorEl.classList.remove('tapping'), 150);
+                if (dist < CONFIG.PINCH_THRESHOLD) {
+                    if (!isPinching) { // 边缘触发：刚捏合的瞬间
+                        isPinching = true;
+                        cursorEl.classList.add('pinched');
+                        
+                        if (now - lastAction > 500) {
+                            const target = items.find(i => {
+                                const d = Math.sqrt(Math.pow(i.cx - mouse.x, 2) + Math.pow(i.cy - mouse.y, 2));
+                                return i.active ? d < 120 : d < 60;
+                            });
+                            if (target) handleSelect(target);
+                            lastAction = now;
+                        }
+                    }
+                } else {
+                    isPinching = false;
+                    cursorEl.classList.remove('pinched');
                 }
 
-                // 3. 挥手滚动 (Swipe to Scroll)
-                // 仅在没有图片放大时支持全局滚动
+                // 3. 挥手滚动 (Swipe)
                 if (!activeLeft && !activeRight) {
                     xHistory.push(palmCenter.x);
-                    if (xHistory.length > 8) xHistory.shift();
+                    if (xHistory.length > 10) xHistory.shift();
                     
-                    if (xHistory.length >= 8) {
+                    if (xHistory.length >= 10 && !isPinching) {
                         const swipeX = xHistory[xHistory.length - 1] - xHistory[0];
-                        // 阈值判定：快速横向移动
-                        if (Math.abs(swipeX) > 0.12) {
-                            // 赋予背景一个向左或向右的速度
-                            // 乘以系数 80 将标准化坐标转换为像素冲量
-                            velocityX = swipeX * 80; 
-                            xHistory = []; // 重置防止多次触发
+                        if (Math.abs(swipeX) > 0.15) {
+                            velocityX = swipeX * 70; 
+                            xHistory = []; 
                         }
                     }
                 }
