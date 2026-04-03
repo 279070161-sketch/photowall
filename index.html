@@ -3,489 +3,414 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nano Matrix // Gesture Control V7.1</title>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
+    <title>Nano Matrix // Integrated Gesture UX V19.0</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- MediaPipe Hands SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <style>
         body {
             margin: 0;
-            background-color: #050505;
+            background-color: #080808;
             color: white;
             overflow: hidden;
-            font-family: 'Montserrat', "PingFang SC", sans-serif;
+            font-family: 'Montserrat', sans-serif;
             touch-action: none;
             -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
         }
 
         #stage {
             position: relative;
             width: 100vw;
             height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            perspective: 2000px;
-        }
-
-        .grid-container {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            transform-style: preserve-3d;
+            overflow: hidden;
         }
 
         .item {
             position: absolute;
-            width: 50px; 
-            height: 38px; 
-            background-color: #111;
-            border-radius: 1px;
-            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+            width: 60px; 
+            height: 45px; 
+            background-color: #222;
+            border-radius: 3px;
             cursor: pointer;
-            z-index: 1;
-            will-change: transform, opacity;
+            z-index: 10;
+            will-change: transform;
             transform-origin: center center;
+            backface-visibility: hidden;
         }
 
         .img-wrapper {
             width: 100%;
             height: 100%;
             overflow: hidden;
-            border-radius: 1px;
-            position: relative;
+            border-radius: 3px;
+            pointer-events: none;
         }
 
         .item img {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            pointer-events: none;
-            filter: brightness(0.7);
-            transition: filter 0.4s ease;
-        }
-
-        .item.hovered {
-            outline: 2px solid rgba(255, 255, 255, 0.8);
-            z-index: 100;
+            filter: brightness(1);
+            transition: filter 0.4s;
         }
 
         .item.active {
-            z-index: 9999 !important;
+            z-index: 5000 !important;
         }
 
         .item.active img {
             filter: brightness(1.1);
+            box-shadow: 0 0 40px rgba(255,255,255,0.3);
         }
 
         .info-content {
             position: absolute;
-            top: 100%; 
-            left: 0;
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            top: 110%;
+            left: 50%;
+            transform: translateX(-50%) translateZ(0); 
+            text-align: center;
             opacity: 0;
-            margin-top: 8px;
-            transition: opacity 0.3s ease;
+            width: 200px;
             pointer-events: none;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 1.5px;
+            color: #ffffff;
+            text-transform: uppercase;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.8);
         }
 
         .item.active .info-content {
             opacity: 1;
+            transition: opacity 0.4s ease-out 0.1s;
         }
 
-        .info-title {
-            font-size: 10px; 
-            transform: scale(0.5); 
-            transform-origin: center top;
-            font-weight: 400; 
-            color: rgba(255, 255, 255, 0.9); 
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            white-space: nowrap;
-        }
-
-        /* 引导遮罩 */
         #setup-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0,0,0,0.9);
-            z-index: 9000;
+            background: #000;
+            z-index: 100000;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            text-align: center;
-            backdrop-filter: blur(10px);
         }
 
-        #setup-overlay h1 { font-size: 20px; margin-bottom: 20px; letter-spacing: 4px; }
-        #start-btn {
-            padding: 12px 30px;
-            border: 1px solid white;
+        .btn {
+            padding: 15px 40px;
+            border: 1px solid rgba(255,255,255,0.3);
+            margin: 10px;
             cursor: pointer;
-            transition: all 0.3s;
             text-transform: uppercase;
-            font-size: 12px;
-            letter-spacing: 2px;
+            font-size: 13px;
+            letter-spacing: 3px;
+            transition: all 0.3s;
         }
-        #start-btn:hover { background: white; color: black; }
+        .btn:hover { border-color: white; background: rgba(255,255,255,0.1); }
 
-        /* 摄像头预览容器 */
-        #video-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            width: 160px;
-            height: 120px;
-            background: #000;
-            border-radius: 12px;
-            overflow: hidden;
-            border: 2px solid rgba(255,255,255,0.1);
-            z-index: 5000;
-            transform: scaleX(-1);
-            display: none;
-        }
-        #input_video { display: none; }
-        #output_canvas { width: 100%; height: 100%; object-fit: cover; }
-
-        /* 手势光标 */
         #cursor {
             position: fixed;
-            width: 30px;
-            height: 30px;
-            border: 2px solid #fff;
+            width: 34px;
+            height: 34px;
+            border: 2px solid rgba(255,255,255,0.4);
             border-radius: 50%;
             pointer-events: none;
-            z-index: 6000;
+            z-index: 10001;
             display: none;
-            mix-blend-mode: difference;
-            transition: transform 0.1s ease;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s ease-out, width 0.2s, height 0.2s;
+        }
+        
+        #cursor.tapping {
+            width: 20px;
+            height: 20px;
+            background-color: white;
+            border-color: white;
+            box-shadow: 0 0 15px white;
         }
 
-        .ui-overlay {
+        #gesture-hint {
             position: fixed;
-            bottom: 1rem;
+            bottom: 30px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(255,255,255,0.02);
-            backdrop-filter: blur(8px);
-            padding: 0.3rem 0.8rem;
-            border-radius: 99px;
+            font-size: 10px;
+            letter-spacing: 2px;
+            opacity: 0.5;
+            text-transform: uppercase;
             pointer-events: none;
-            z-index: 2000;
-            font-size: 8px;
-            color: rgba(255,255,255,0.5);
-            letter-spacing: 1px;
+            text-align: center;
         }
     </style>
 </head>
 <body>
 
 <div id="setup-overlay">
-    <h1>GESTURE CONTROL</h1>
-    <p style="color: #666; margin-bottom: 30px; font-size: 12px;">需要摄像头权限以启用手势互动</p>
-    <button id="start-btn">启动摄像头</button>
-    <p id="error-msg" style="color: #ff4444; margin-top: 20px; font-size: 10px; display: none;"></p>
+    <h1 style="margin-bottom: 30px; letter-spacing: 10px; font-weight: 300;">MATRIX V19</h1>
+    <div style="display:flex;">
+        <div class="btn" onclick="start('mouse')">MOUSE</div>
+        <div class="btn" onclick="start('gesture')" style="background:white; color:black; border:none;">GESTURE</div>
+    </div>
 </div>
 
 <div id="stage">
-    <div class="grid-container" id="grid"></div>
-
-    <div id="video-container">
-        <video id="input_video" playsinline></video>
-        <canvas id="output_canvas"></canvas>
-    </div>
-
+    <div id="grid"></div>
     <div id="cursor"></div>
-    <div class="ui-overlay">V7.1 // READY FOR GESTURE</div>
+    <div id="gesture-hint">TAP TO OPEN / CLOSE<br>SWIPE TO SCROLL GALLERY</div>
 </div>
 
 <script>
     const CONFIG = {
-        WIDTH: 50,      
-        HEIGHT: 38,     
-        GAP_X: 12,               
-        GAP_Y: 10,
-        TARGET_ROWS: 16,
-        SCROLL_SPEED: 0.15,
-        RADIATE_DISTANCE: 180,   
-        PUSH_STRENGTH: 85,       
-        ENLARGE_SCALE: 1.85,     
-        LERP_FACTOR: 0.1,        
-        DEFAULT_OPACITY: 0.7,
-        SAFE_TOP: 100,           
-        SAFE_BOTTOM: 80,         
-        SAFE_LEFT: 50,
-        SAFE_RIGHT: 50
+        W: 60, H: 45, GAP_X: 18, GAP_Y: 15,
+        ROWS: 16, 
+        BASE_SPEED: 0.15, 
+        SCALE: 3.0, 
+        LERP: 0.1, 
+        REPULSION_RADIUS: 320, 
+        REPULSION_STRENGTH: 130,
+        FRICTION: 0.95 // 挥手滚动的摩擦系数
     };
 
-    const MOCK_DATA = ["MATRIX", "CORE", "VOID", "SYNAPSE", "GEOMETRY", "LIGHT", "VECTOR", "PULSE", "ZENITH", "NANO"];
-
-    const grid = document.getElementById('grid');
-    const cursorEl = document.getElementById('cursor');
-    const startBtn = document.getElementById('start-btn');
-    const setupOverlay = document.getElementById('setup-overlay');
-    const errorMsg = document.getElementById('error-msg');
-
     let items = [];
-    let globalScrollX = 0;     
-    let totalWidth = 0;
-
-    let gesturePos = { x: 0, y: 0 };
-    let isFist = false;
-    let hoveredItem = null;
+    let scrollX = 0;
+    let velocityX = 0; // 当前滚动速度
+    let totalW = 0;
+    let mouse = { x: -100, y: -100 };
+    let activeLeft = null;
+    let activeRight = null;
 
     function init() {
-        grid.innerHTML = '';
-        items = [];
         const sw = window.innerWidth;
         const sh = window.innerHeight;
+        const grid = document.getElementById('grid');
+        grid.innerHTML = '';
+        items = [];
 
-        const rows = CONFIG.TARGET_ROWS; 
-        const cols = Math.ceil(sw / (CONFIG.WIDTH + CONFIG.GAP_X)) + 14; 
-        totalWidth = cols * (CONFIG.WIDTH + CONFIG.GAP_X);
+        const cols = Math.ceil(sw / (CONFIG.W + CONFIG.GAP_X)) + 18;
+        totalW = cols * (CONFIG.W + CONFIG.GAP_X);
+        const gridH = CONFIG.ROWS * (CONFIG.H + CONFIG.GAP_Y);
+        const startY = (sh - gridH) / 2;
 
-        const gridTotalHeight = rows * (CONFIG.HEIGHT + CONFIG.GAP_Y) - CONFIG.GAP_Y;
-        const startY = (sh - gridTotalHeight) / 2;
-
-        for (let r = 0; r < rows; r++) {
+        for (let r = 0; r < CONFIG.ROWS; r++) {
             for (let c = 0; c < cols; c++) {
-                const itemEl = document.createElement('div');
-                itemEl.className = 'item';
-                const rowOffset = (r % 2 === 0) ? 0 : (CONFIG.WIDTH + CONFIG.GAP_X) / 2;
-                const baseX = c * (CONFIG.WIDTH + CONFIG.GAP_X) + rowOffset;
-                const baseY = startY + r * (CONFIG.HEIGHT + CONFIG.GAP_Y);
+                const el = document.createElement('div');
+                el.className = 'item';
+                
+                const rowOffset = (r % 2 === 0) ? 0 : (CONFIG.W + CONFIG.GAP_X) / 2;
+                const bx = c * (CONFIG.W + CONFIG.GAP_X) + rowOffset;
+                const by = startY + r * (CONFIG.H + CONFIG.GAP_Y) + CONFIG.H/2;
 
-                const wrapper = document.createElement('div');
-                wrapper.className = 'img-wrapper';
-                const img = document.createElement('img');
-                img.src = `https://picsum.photos/seed/${Math.floor(Math.random() * 50000)}/200/150`;
-                wrapper.appendChild(img);
-                itemEl.appendChild(wrapper);
+                el.innerHTML = `
+                    <div class="img-wrapper">
+                        <img src="https://picsum.photos/seed/${r*cols+c}/200/150">
+                    </div>
+                    <div class="info-content">NODE DATA 0${r}${c}</div>
+                `;
 
-                const info = document.createElement('div');
-                info.className = 'info-content';
-                info.innerHTML = `<div class="info-title">${MOCK_DATA[Math.floor(Math.random() * MOCK_DATA.length)]}</div>`;
-                itemEl.appendChild(info);
-
-                grid.appendChild(itemEl);
+                grid.appendChild(el);
 
                 const itemObj = {
-                    el: itemEl,
-                    baseX: baseX,
-                    baseY: baseY,
-                    currentX: 0, 
-                    currentY: 0,
-                    opacity: CONFIG.DEFAULT_OPACITY, 
-                    isActive: false,
-                    screenCenterX: 0,
-                    screenCenterY: 0
+                    el: el, bx: bx, by: by, cx: bx, cy: by,
+                    active: false, scale: 1, side: 'LEFT'
                 };
 
-                itemEl.onclick = () => toggleActive(itemObj);
+                el.addEventListener('click', () => handleSelect(itemObj));
                 items.push(itemObj);
             }
         }
-        items.forEach(i => { i.currentX = getDisplayX(i.baseX); i.currentY = i.baseY; });
-        requestAnimationFrame(update);
+        update();
     }
 
-    function toggleActive(itemObj) {
-        const wasActive = itemObj.isActive;
-        items.forEach(it => {
-            it.isActive = false;
-            it.el.classList.remove('active');
-        });
-        if (!wasActive) {
-            const rect = itemObj.el.getBoundingClientRect();
-            itemObj.screenCenterX = rect.left + rect.width / 2;
-            itemObj.screenCenterY = rect.top + rect.height / 2;
-            itemObj.isActive = true;
-            itemObj.el.classList.add('active');
+    function handleSelect(obj) {
+        const sw = window.innerWidth;
+        
+        // 如果点击的是已经激活的图片，则关闭它
+        if (obj.active) {
+            obj.active = false;
+            obj.el.classList.remove('active');
+            if (obj.side === 'LEFT') activeLeft = null;
+            else activeRight = null;
+            return;
         }
-    }
 
-    function getDisplayX(baseX) {
-        let x = (baseX + globalScrollX) % totalWidth;
-        if (x < -CONFIG.WIDTH * 2) x += totalWidth;
-        if (x > totalWidth - CONFIG.WIDTH * 2) x -= totalWidth;
-        return x;
-    }
+        // 计算当前位置确定 side
+        let gx = (obj.bx + scrollX) % totalW;
+        if (gx < -CONFIG.W) gx += totalW;
+        if (gx > totalW - CONFIG.W) gx -= totalW;
+        const currentScreenX = gx + CONFIG.W / 2;
+        const side = (currentScreenX < sw / 2) ? 'LEFT' : 'RIGHT';
 
-    function lerp(start, end, factor) {
-        return start + (end - start) * factor;
+        if (side === 'LEFT') {
+            if (activeLeft) { activeLeft.active = false; activeLeft.el.classList.remove('active'); }
+            obj.side = 'LEFT'; obj.active = true; obj.el.classList.add('active'); activeLeft = obj;
+        } else {
+            if (activeRight) { activeRight.active = false; activeRight.el.classList.remove('active'); }
+            obj.side = 'RIGHT'; obj.active = true; obj.el.classList.add('active'); activeRight = obj;
+        }
     }
 
     function update() {
-        globalScrollX -= CONFIG.SCROLL_SPEED;
-        if (Math.abs(globalScrollX) >= totalWidth) globalScrollX = 0;
+        // 应用滚动逻辑
+        // 如果没有挥手产生的速度，保持基础滚动速度
+        if (Math.abs(velocityX) < 0.1) {
+            velocityX = -CONFIG.BASE_SPEED;
+        } else {
+            velocityX *= CONFIG.FRICTION; // 惯性衰减
+        }
+        
+        scrollX += velocityX;
+        if (scrollX > 0) scrollX -= totalW;
+        if (Math.abs(scrollX) >= totalW) scrollX = 0;
 
         const sw = window.innerWidth;
         const sh = window.innerHeight;
-        const activeItem = items.find(i => i.isActive);
-
-        cursorEl.style.left = `${gesturePos.x}px`;
-        cursorEl.style.top = `${gesturePos.y}px`;
-        cursorEl.style.background = isFist ? 'rgba(255,255,255,0.4)' : 'transparent';
-        cursorEl.style.transform = `translate(-50%, -50%) scale(${isFist ? 0.8 : 1})`;
-
-        let newHovered = null;
 
         items.forEach(item => {
-            const gridX = getDisplayX(item.baseX);
-            const gridY = item.baseY;
-            let targetTX, targetTY, targetScale, targetOpacity, targetZ;
+            let baseTX, baseTY, ts;
+            let gx = (item.bx + scrollX) % totalW;
+            if (gx < -CONFIG.W) gx += totalW;
+            if (gx > totalW - CONFIG.W) gx -= totalW;
+            baseTX = gx + CONFIG.W / 2;
+            baseTY = item.by;
 
-            if (item.isActive) {
-                targetScale = CONFIG.ENLARGE_SCALE;
-                targetZ = 1200;
-                targetOpacity = 1;
-                const halfVW = (CONFIG.WIDTH * targetScale) / 2;
-                const halfVH = (CONFIG.HEIGHT * targetScale) / 2;
-                let cx = item.screenCenterX;
-                let cy = item.screenCenterY;
-                if (cy - halfVH < CONFIG.SAFE_TOP) cy = CONFIG.SAFE_TOP + halfVH;
-                if (cy + halfVH + 30 > sh - CONFIG.SAFE_BOTTOM) cy = sh - CONFIG.SAFE_BOTTOM - 30 - halfVH;
-                if (cx - halfVW < CONFIG.SAFE_LEFT) cx = CONFIG.SAFE_LEFT + halfVW;
-                if (cx + halfVW > sw - CONFIG.SAFE_RIGHT) cx = sw - CONFIG.SAFE_RIGHT - halfVW;
-                targetTX = cx - CONFIG.WIDTH / 2;
-                targetTY = cy - CONFIG.HEIGHT / 2;
+            let finalTX = baseTX;
+            let finalTY = baseTY;
+            ts = 1;
+
+            if (item.active) {
+                const targetZoneX = (item.side === 'LEFT') ? sw * 0.25 : sw * 0.75;
+                const targetZoneY = sh * 0.5;
+                finalTX = targetZoneX;
+                finalTY = targetZoneY;
+                ts = CONFIG.SCALE;
             } else {
-                targetTX = gridX;
-                targetTY = gridY;
-                targetScale = 1;
-                targetZ = 0;
-
-                if (isFist) {
-                    const distToCursor = Math.sqrt(Math.pow(targetTX + CONFIG.WIDTH/2 - gesturePos.x, 2) + Math.pow(targetTY + CONFIG.HEIGHT/2 - gesturePos.y, 2));
-                    if (distToCursor < 35) {
-                        newHovered = item;
-                        targetScale = 1.25;
-                        targetOpacity = 1;
+                let totalDX = 0;
+                let totalDY = 0;
+                [activeLeft, activeRight].forEach(activeItem => {
+                    if (activeItem) {
+                        const dx = baseTX - activeItem.cx;
+                        const dy = baseTY - activeItem.cy;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < CONFIG.REPULSION_RADIUS) {
+                            const force = (1 - dist / CONFIG.REPULSION_RADIUS);
+                            totalDX += (dx / dist) * force * CONFIG.REPULSION_STRENGTH;
+                            totalDY += (dy / dist) * force * CONFIG.REPULSION_STRENGTH;
+                            ts *= (1 - force * 0.08);
+                        }
                     }
+                });
+                finalTX += totalDX;
+                finalTY += totalDY;
+                if (!activeLeft && !activeRight) {
+                    const dMouse = Math.sqrt(Math.pow(baseTX - mouse.x, 2) + Math.pow(baseTY - mouse.y, 2));
+                    if (dMouse < 50) ts = 1.25;
                 }
-
-                let pushX = 0; pushY = 0;
-                let minAlpha = CONFIG.DEFAULT_OPACITY;
-                if (activeItem) {
-                    const ax = activeItem.currentX + CONFIG.WIDTH / 2;
-                    const ay = activeItem.currentY + CONFIG.HEIGHT / 2;
-                    const ix = gridX + CONFIG.WIDTH / 2;
-                    const iy = gridY + CONFIG.HEIGHT / 2;
-                    let dx = ix - ax; let dy = iy - ay;
-                    if (dx > sw / 2) dx -= sw; if (dx < -sw / 2) dx += sw;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist < CONFIG.RADIATE_DISTANCE) {
-                        const ratio = 1 - (dist / CONFIG.RADIATE_DISTANCE);
-                        pushX += Math.cos(Math.atan2(dy, dx)) * Math.pow(ratio, 2) * CONFIG.PUSH_STRENGTH;
-                        pushY += Math.sin(Math.atan2(dy, dx)) * Math.pow(ratio, 2) * CONFIG.PUSH_STRENGTH;
-                        minAlpha = 0.2 + (1 - ratio) * 0.4;
-                    }
-                    targetOpacity = Math.min(targetOpacity || 1, minAlpha);
-                    targetScale = Math.min(targetScale || 1, 0.85);
-                } else {
-                    targetOpacity = targetOpacity || CONFIG.DEFAULT_OPACITY;
-                }
-                targetTX += pushX; targetTY += pushY;
             }
 
-            if (!item.isActive && Math.abs(targetTX - item.currentX) > sw * 0.5) item.currentX = targetTX;
-            item.currentX = lerp(item.currentX, targetTX, CONFIG.LERP_FACTOR);
-            item.currentY = lerp(item.currentY, targetTY, CONFIG.LERP_FACTOR);
-            item.opacity = lerp(item.opacity, targetOpacity, CONFIG.LERP_FACTOR);
+            if (!item.active && Math.abs(finalTX - item.cx) > sw * 0.5) item.cx = finalTX;
 
-            item.el.style.transform = `translate3d(${item.currentX}px, ${item.currentY}px, ${targetZ}px) scale(${targetScale})`;
-            item.el.style.opacity = item.opacity;
+            item.cx = lerp(item.cx, finalTX, CONFIG.LERP);
+            item.cy = lerp(item.cy, finalTY, CONFIG.LERP);
+            item.scale = lerp(item.scale, ts, CONFIG.LERP);
+            item.el.style.transform = `translate3d(${item.cx}px, ${item.cy}px, 0) translate(-50%, -50%) scale(${item.scale})`;
         });
-
-        if (newHovered !== hoveredItem) {
-            if (hoveredItem) hoveredItem.el.classList.remove('hovered');
-            if (newHovered) newHovered.el.classList.add('hovered');
-            hoveredItem = newHovered;
-        }
 
         requestAnimationFrame(update);
     }
 
-    startBtn.onclick = () => {
-        startBtn.innerText = "正在请求权限...";
-        initGestures();
-    };
+    function lerp(a, b, f) { return a + (b - a) * f; }
+
+    function start(mode) {
+        document.getElementById('setup-overlay').style.display = 'none';
+        if (mode === 'mouse') {
+            window.addEventListener('mousemove', e => {
+                mouse.x = e.clientX; mouse.y = e.clientY;
+            });
+            document.getElementById('cursor').style.display = 'block';
+        } else {
+            initGestures();
+        }
+    }
 
     function initGestures() {
-        const videoElement = document.getElementById('input_video');
-        const canvasElement = document.getElementById('output_canvas');
-        const canvasCtx = canvasElement.getContext('2d');
+        const videoElement = document.createElement('video');
+        videoElement.style.display = 'none';
+        document.body.appendChild(videoElement);
+        const cursorEl = document.getElementById('cursor');
 
-        const hands = new Hands({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-        });
+        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
 
-        hands.setOptions({
-            maxNumHands: 1,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
-
-        let lastGesture = 'none';
-        let gestureCounter = 0;
+        let lastAction = 0;
+        let zHistory = [];
+        let xHistory = []; 
 
         hands.onResults((results) => {
-            canvasCtx.save();
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                const landmarks = results.multiHandLandmarks[0];
-                gesturePos.x = (1 - landmarks[8].x) * window.innerWidth;
-                gesturePos.y = landmarks[8].y * window.innerHeight;
+                const lm = results.multiHandLandmarks[0];
+                const now = Date.now();
+                
+                const indexTip = lm[8];
+                const palmCenter = lm[9]; 
+                
+                // 1. 光标跟随
+                mouse.x = (1 - indexTip.x) * window.innerWidth;
+                mouse.y = indexTip.y * window.innerHeight;
+                cursorEl.style.display = 'block';
 
-                const isFistNow = [8, 12, 16, 20].every(id => {
-                    const dx = landmarks[id].x - landmarks[9].x;
-                    const dy = landmarks[id].y - landmarks[9].y;
-                    return Math.sqrt(dx*dx + dy*dy) < 0.12; 
-                });
+                // 2. 空气点触 (用于 打开 或 关闭 图片)
+                zHistory.push(indexTip.z);
+                if (zHistory.length > 5) zHistory.shift();
+                const zDepthChange = zHistory[0] - indexTip.z; 
+                const isTappingForward = zDepthChange > 0.05; 
 
-                const currentType = isFistNow ? 'fist' : 'palm';
-                if (currentType === lastGesture) gestureCounter++; else { gestureCounter = 0; lastGesture = currentType; }
+                if (isTappingForward && now - lastAction > 700) {
+                    cursorEl.classList.add('tapping');
+                    
+                    // 寻找当前悬停的图片（包括已激活的和背景中的）
+                    const target = items.find(i => {
+                        const dist = Math.sqrt(Math.pow(i.cx - mouse.x, 2) + Math.pow(i.cy - mouse.y, 2));
+                        // 激活态图片范围更大一点方便点选关闭
+                        return i.active ? dist < 100 : dist < 50;
+                    });
+                    
+                    if (target) handleSelect(target);
+                    lastAction = now;
+                    setTimeout(() => cursorEl.classList.remove('tapping'), 150);
+                }
 
-                if (gestureCounter > 5) {
-                    if (currentType === 'palm' && isFist) {
-                        if (hoveredItem) toggleActive(hoveredItem);
-                        else items.forEach(it => { it.isActive = false; it.el.classList.remove('active'); });
+                // 3. 挥手滚动 (Swipe to Scroll)
+                // 仅在没有图片放大时支持全局滚动
+                if (!activeLeft && !activeRight) {
+                    xHistory.push(palmCenter.x);
+                    if (xHistory.length > 8) xHistory.shift();
+                    
+                    if (xHistory.length >= 8) {
+                        const swipeX = xHistory[xHistory.length - 1] - xHistory[0];
+                        // 阈值判定：快速横向移动
+                        if (Math.abs(swipeX) > 0.12) {
+                            // 赋予背景一个向左或向右的速度
+                            // 乘以系数 80 将标准化坐标转换为像素冲量
+                            velocityX = swipeX * 80; 
+                            xHistory = []; // 重置防止多次触发
+                        }
                     }
-                    isFist = (currentType === 'fist');
                 }
             }
-            canvasCtx.restore();
         });
 
         const camera = new Camera(videoElement, {
             onFrame: async () => { await hands.send({ image: videoElement }); },
             width: 640, height: 480
         });
-
-        camera.start()
-            .then(() => {
-                setupOverlay.style.display = 'none';
-                document.getElementById('video-container').style.display = 'block';
-                cursorEl.style.display = 'block';
-            })
-            .catch(err => {
-                startBtn.innerText = "重新尝试";
-                errorMsg.style.display = 'block';
-                errorMsg.innerText = "无法获取摄像头: " + err.name + ". 请在浏览器设置中允许权限并刷新页面。";
-            });
+        camera.start();
     }
 
-    window.onresize = init;
-    init();
+    window.onload = init;
+    window.onresize = () => init();
 </script>
 
 </body>
