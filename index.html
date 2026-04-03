@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nano Matrix // Cursor Sync V31.0</title>
+    <title>Nano Matrix // Gesture Grip Control V33.0</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@200;300;400&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
@@ -26,8 +26,8 @@
             width: 100vw;
             height: 100vh;
             overflow: hidden;
-            /* 隐藏默认鼠标指针，使用自定义光标 */
             cursor: none; 
+            user-select: none;
         }
 
         .item {
@@ -36,7 +36,7 @@
             height: 45px; 
             background-color: #111;
             border-radius: 0; 
-            cursor: none; /* 保持全局无指针感 */
+            cursor: none;
             z-index: 10;
             will-change: transform;
             transform-origin: center center;
@@ -96,20 +96,19 @@
             position: fixed;
             width: 18px;
             height: 18px;
-            border: 0.8px solid rgba(255,255,255,0.6); /* 略微增强对比度 */
+            border: 0.8px solid rgba(255,255,255,0.6);
             border-radius: 50%;
             pointer-events: none;
             z-index: 10001;
             display: none;
             transform: translate(-50%, -50%);
-            /* 位置移动时不使用 transition 保证实时感，仅在状态切换时使用动画 */
             transition: width 0.3s, height 0.3s, background-color 0.3s;
-            mix-blend-mode: difference; /* 确保在亮部也清晰可见 */
+            mix-blend-mode: difference;
         }
         
         #cursor.pinched {
-            width: 6px;
-            height: 6px;
+            width: 8px;
+            height: 8px;
             background-color: #fff;
             border-color: #fff;
         }
@@ -135,7 +134,7 @@
     <div id="cursor"></div>
     <div id="gesture-hint">
         SYSTEM: INITIALIZING...<br>
-        CONTROL: MOUSE ENABLED
+        CONTROL: MOUSE + GRIP ENABLED
     </div>
 </div>
 
@@ -149,7 +148,9 @@
         REPULSION_RADIUS: 500, 
         REPULSION_STRENGTH: 240,
         FRICTION: 0.93,
-        PINCH_THRESHOLD: 0.04 
+        // 握拳判定阈值：手指指尖到掌心的平均距离
+        GRIP_THRESHOLD: 0.08, 
+        DRAG_MULTIPLIER: 1.8 
     };
 
     let items = [];
@@ -158,6 +159,9 @@
     let totalW = 0;
     let mouse = { x: -100, y: -100 };
     let activeItem = null;
+
+    let isDragging = false;
+    let lastMouseX = 0;
 
     function bootstrap() {
         initGrid();
@@ -209,7 +213,11 @@
                     active: false, scale: 1, seed: seed
                 };
 
-                el.addEventListener('click', () => handleSelect(itemObj));
+                el.addEventListener('mouseup', () => {
+                    if (!isDragging || Math.abs(velocityX) < 1) {
+                        handleSelect(itemObj);
+                    }
+                });
                 items.push(itemObj);
             }
         }
@@ -217,19 +225,32 @@
 
     function initMouse() {
         const cursorEl = document.getElementById('cursor');
+        
+        window.addEventListener('mousedown', e => {
+            isDragging = true;
+            lastMouseX = e.clientX;
+            cursorEl.classList.add('pinched');
+        });
+
         window.addEventListener('mousemove', e => {
+            const dx = e.clientX - lastMouseX;
             mouse.x = e.clientX; 
             mouse.y = e.clientY;
             
-            // 确保光标元素实时跟随并显示
+            if (isDragging && !activeItem) {
+                velocityX = dx * CONFIG.DRAG_MULTIPLIER;
+            }
+
+            lastMouseX = e.clientX;
+
             cursorEl.style.display = 'block';
             cursorEl.style.left = mouse.x + 'px';
             cursorEl.style.top = mouse.y + 'px';
         });
 
-        // 鼠标离开窗口隐藏光标
-        window.addEventListener('mouseleave', () => {
-            cursorEl.style.display = 'none';
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+            cursorEl.classList.remove('pinched');
         });
     }
 
@@ -261,10 +282,12 @@
     }
 
     function update() {
-        if (Math.abs(velocityX) < Math.abs(CONFIG.BASE_SPEED)) {
-            velocityX = lerp(velocityX, -CONFIG.BASE_SPEED, 0.05);
-        } else {
-            velocityX *= CONFIG.FRICTION;
+        if (!isDragging) {
+            if (Math.abs(velocityX) < Math.abs(CONFIG.BASE_SPEED)) {
+                velocityX = lerp(velocityX, -CONFIG.BASE_SPEED, 0.05);
+            } else {
+                velocityX *= CONFIG.FRICTION;
+            }
         }
         
         scrollX += velocityX;
@@ -304,7 +327,8 @@
                     }
                 } else {
                     const dMouse = Math.sqrt(Math.pow(baseTX - mouse.x, 2) + Math.pow(baseTY - mouse.y, 2));
-                    if (dMouse < 40) ts = 1.25;
+                    const hoverRadius = isDragging ? 20 : 40;
+                    if (dMouse < hoverRadius) ts = 1.25;
                 }
             }
 
@@ -329,61 +353,71 @@
         const cursorEl = document.getElementById('cursor');
 
         const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+        hands.setOptions({ 
+            maxNumHands: 1, 
+            modelComplexity: 1, 
+            minDetectionConfidence: 0.7, 
+            minTrackingConfidence: 0.7 
+        });
 
         let lastAction = 0;
-        let xHistory = []; 
-        let isPinching = false;
+        let gestureLastX = 0;
 
         hands.onResults((results) => {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const lm = results.multiHandLandmarks[0];
                 const now = Date.now();
                 
-                const thumbTip = lm[4];
-                const indexTip = lm[8];
-                const palmCenter = lm[9]; 
+                // 使用掌心 (landmark 9) 作为光标锚点，比指尖更稳定
+                const anchor = lm[9]; 
+                const currentX = (1 - anchor.x) * window.innerWidth;
+                const currentY = anchor.y * window.innerHeight;
                 
-                mouse.x = (1 - indexTip.x) * window.innerWidth;
-                mouse.y = indexTip.y * window.innerHeight;
+                const dx = currentX - mouse.x;
+                mouse.x = currentX;
+                mouse.y = currentY;
                 
-                // 同步更新光标位置
                 cursorEl.style.display = 'block';
                 cursorEl.style.left = mouse.x + 'px';
                 cursorEl.style.top = mouse.y + 'px';
 
-                const dist = Math.sqrt(
-                    Math.pow(thumbTip.x - indexTip.x, 2) + 
-                    Math.pow(thumbTip.y - indexTip.y, 2)
-                );
+                // 握拳检测逻辑：计算指尖到掌心的平均距离
+                // 如果所有指尖都靠近掌心，说明是握拳
+                const fingertips = [4, 8, 12, 16, 20];
+                let avgDist = 0;
+                fingertips.forEach(idx => {
+                    avgDist += Math.sqrt(
+                        Math.pow(lm[idx].x - lm[0].x, 2) + 
+                        Math.pow(lm[idx].y - lm[0].y, 2)
+                    );
+                });
+                avgDist /= fingertips.length;
 
-                if (dist < CONFIG.PINCH_THRESHOLD) {
-                    if (!isPinching) {
-                        isPinching = true;
-                        if (now - lastAction > 800) {
-                            const target = items.find(i => {
-                                const d = Math.sqrt(Math.pow(i.cx - mouse.x, 2) + Math.pow(i.cy - mouse.y, 2));
-                                return i.active ? d < 200 : d < 60;
-                            });
-                            if (target) handleSelect(target);
-                            lastAction = now;
-                        }
+                const isGripping = avgDist < CONFIG.GRIP_THRESHOLD;
+
+                if (isGripping) {
+                    if (!isDragging) {
+                        isDragging = true; // 模拟鼠标按下
+                        cursorEl.classList.add('pinched');
                     }
-                    cursorEl.classList.add('pinched');
+                    // 拳头左右甩动更新速度 (模拟鼠标拖动)
+                    if (!activeItem) {
+                        velocityX = dx * CONFIG.DRAG_MULTIPLIER;
+                    }
+                    
+                    // 模拟点击逻辑（保持不动一段时间视为选中）
+                    if (Math.abs(dx) < 2 && now - lastAction > 1200) {
+                        const target = items.find(i => {
+                            const d = Math.sqrt(Math.pow(i.cx - mouse.x, 2) + Math.pow(i.cy - mouse.y, 2));
+                            return i.active ? d < 200 : d < 60;
+                        });
+                        if (target) handleSelect(target);
+                        lastAction = now;
+                    }
                 } else {
-                    isPinching = false;
-                    cursorEl.classList.remove('pinched');
-                }
-
-                if (!activeItem) {
-                    xHistory.push(palmCenter.x);
-                    if (xHistory.length > 10) xHistory.shift();
-                    if (xHistory.length >= 10 && !isPinching) {
-                        const swipeX = xHistory[xHistory.length - 1] - xHistory[0];
-                        if (Math.abs(swipeX) > 0.15) {
-                            velocityX = swipeX * 120;
-                            xHistory = []; 
-                        }
+                    if (isDragging) {
+                        isDragging = false; // 模拟鼠标抬起
+                        cursorEl.classList.remove('pinched');
                     }
                 }
             }
@@ -395,7 +429,7 @@
                 width: 640, height: 480
             });
             await camera.start();
-            updateStatus("SYSTEM: ONLINE<br>CONTROL: MOUSE + GESTURE ENABLED");
+            updateStatus("SYSTEM: ONLINE<br>CONTROL: MOUSE + GRIP ENABLED");
         } catch (e) {
             throw e;
         }
