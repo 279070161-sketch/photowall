@@ -3,9 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nano Matrix // Perfect Contain V4.7</title>
+    <title>Nano Matrix // Gesture Control V7.1</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- MediaPipe Hands SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <style>
         body {
             margin: 0;
@@ -40,9 +43,7 @@
             height: 38px; 
             background-color: #111;
             border-radius: 1px;
-            overflow: visible;
             box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
-            transition: box-shadow 0.4s ease;
             cursor: pointer;
             z-index: 1;
             will-change: transform, opacity;
@@ -62,20 +63,23 @@
             height: 100%;
             object-fit: cover;
             pointer-events: none;
-            filter: brightness(0.8);
+            filter: brightness(0.7);
             transition: filter 0.4s ease;
         }
 
+        .item.hovered {
+            outline: 2px solid rgba(255, 255, 255, 0.8);
+            z-index: 100;
+        }
+
         .item.active {
-            z-index: 1000 !important;
-            box-shadow: 0 20px 80px rgba(0, 0, 0, 1);
+            z-index: 9999 !important;
         }
 
         .item.active img {
-            filter: brightness(1.2);
+            filter: brightness(1.1);
         }
 
-        /* 优化文字间距：减少 padding 并在激活时上提 */
         .info-content {
             position: absolute;
             top: 100%; 
@@ -85,27 +89,82 @@
             flex-direction: column;
             align-items: center;
             opacity: 0;
-            padding-top: 4px; /* 进一步缩小间距 */
-            transform: translateY(-2px);
-            transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s;
+            margin-top: 8px;
+            transition: opacity 0.3s ease;
             pointer-events: none;
         }
 
         .item.active .info-content {
             opacity: 1;
-            transform: translateY(0);
         }
 
         .info-title {
             font-size: 10px; 
-            transform: scale(0.45); 
+            transform: scale(0.5); 
             transform-origin: center top;
             font-weight: 400; 
             color: rgba(255, 255, 255, 0.9); 
             text-transform: uppercase;
-            letter-spacing: 2px;
-            line-height: 1;
+            letter-spacing: 1px;
             white-space: nowrap;
+        }
+
+        /* 引导遮罩 */
+        #setup-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 9000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        #setup-overlay h1 { font-size: 20px; margin-bottom: 20px; letter-spacing: 4px; }
+        #start-btn {
+            padding: 12px 30px;
+            border: 1px solid white;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 2px;
+        }
+        #start-btn:hover { background: white; color: black; }
+
+        /* 摄像头预览容器 */
+        #video-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 160px;
+            height: 120px;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid rgba(255,255,255,0.1);
+            z-index: 5000;
+            transform: scaleX(-1);
+            display: none;
+        }
+        #input_video { display: none; }
+        #output_canvas { width: 100%; height: 100%; object-fit: cover; }
+
+        /* 手势光标 */
+        #cursor {
+            position: fixed;
+            width: 30px;
+            height: 30px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 6000;
+            display: none;
+            mix-blend-mode: difference;
+            transition: transform 0.1s ease;
         }
 
         .ui-overlay {
@@ -120,16 +179,30 @@
             pointer-events: none;
             z-index: 2000;
             font-size: 8px;
-            color: rgba(255,255,255,0.15);
+            color: rgba(255,255,255,0.5);
             letter-spacing: 1px;
         }
     </style>
 </head>
 <body>
 
+<div id="setup-overlay">
+    <h1>GESTURE CONTROL</h1>
+    <p style="color: #666; margin-bottom: 30px; font-size: 12px;">需要摄像头权限以启用手势互动</p>
+    <button id="start-btn">启动摄像头</button>
+    <p id="error-msg" style="color: #ff4444; margin-top: 20px; font-size: 10px; display: none;"></p>
+</div>
+
 <div id="stage">
     <div class="grid-container" id="grid"></div>
-    <div class="ui-overlay">MATRIX V4.7 // PERFECT EDGE CONTAINMENT</div>
+
+    <div id="video-container">
+        <video id="input_video" playsinline></video>
+        <canvas id="output_canvas"></canvas>
+    </div>
+
+    <div id="cursor"></div>
+    <div class="ui-overlay">V7.1 // READY FOR GESTURE</div>
 </div>
 
 <script>
@@ -140,20 +213,32 @@
         GAP_Y: 10,
         TARGET_ROWS: 16,
         SCROLL_SPEED: 0.15,
-        RADIATE_DISTANCE: 160,   
-        PUSH_STRENGTH: 70,       
-        ENLARGE_SCALE: 3.2,    
-        LERP_FACTOR: 0.12,    
-        DEFAULT_OPACITY: 0.8,
-        VIEWPORT_MARGIN: 15 // 缩小页边距，让画面利用率更高
+        RADIATE_DISTANCE: 180,   
+        PUSH_STRENGTH: 85,       
+        ENLARGE_SCALE: 1.85,     
+        LERP_FACTOR: 0.1,        
+        DEFAULT_OPACITY: 0.7,
+        SAFE_TOP: 100,           
+        SAFE_BOTTOM: 80,         
+        SAFE_LEFT: 50,
+        SAFE_RIGHT: 50
     };
 
-    const MOCK_DATA = ["CHRONICLE", "STRUCTURE", "ELEMENT", "CHRONO", "VOID", "GEOMETRY", "LIGHT", "MATTER", "PULSE", "ZENITH"];
+    const MOCK_DATA = ["MATRIX", "CORE", "VOID", "SYNAPSE", "GEOMETRY", "LIGHT", "VECTOR", "PULSE", "ZENITH", "NANO"];
 
     const grid = document.getElementById('grid');
+    const cursorEl = document.getElementById('cursor');
+    const startBtn = document.getElementById('start-btn');
+    const setupOverlay = document.getElementById('setup-overlay');
+    const errorMsg = document.getElementById('error-msg');
+
     let items = [];
     let globalScrollX = 0;     
     let totalWidth = 0;
+
+    let gesturePos = { x: 0, y: 0 };
+    let isFist = false;
+    let hoveredItem = null;
 
     function init() {
         grid.innerHTML = '';
@@ -161,7 +246,7 @@
         const sw = window.innerWidth;
         const sh = window.innerHeight;
 
-        const rows = CONFIG.TARGET_ROWS + 4;
+        const rows = CONFIG.TARGET_ROWS; 
         const cols = Math.ceil(sw / (CONFIG.WIDTH + CONFIG.GAP_X)) + 14; 
         totalWidth = cols * (CONFIG.WIDTH + CONFIG.GAP_X);
 
@@ -172,7 +257,6 @@
             for (let c = 0; c < cols; c++) {
                 const itemEl = document.createElement('div');
                 itemEl.className = 'item';
-                
                 const rowOffset = (r % 2 === 0) ? 0 : (CONFIG.WIDTH + CONFIG.GAP_X) / 2;
                 const baseX = c * (CONFIG.WIDTH + CONFIG.GAP_X) + rowOffset;
                 const baseY = startY + r * (CONFIG.HEIGHT + CONFIG.GAP_Y);
@@ -180,16 +264,15 @@
                 const wrapper = document.createElement('div');
                 wrapper.className = 'img-wrapper';
                 const img = document.createElement('img');
-                img.src = `https://picsum.photos/seed/${Math.floor(Math.random() * 10000)}/140/100`;
+                img.src = `https://picsum.photos/seed/${Math.floor(Math.random() * 50000)}/200/150`;
                 wrapper.appendChild(img);
                 itemEl.appendChild(wrapper);
 
-                const titleText = MOCK_DATA[Math.floor(Math.random() * MOCK_DATA.length)];
                 const info = document.createElement('div');
                 info.className = 'info-content';
-                info.innerHTML = `<div class="info-title">${titleText}</div>`;
+                info.innerHTML = `<div class="info-title">${MOCK_DATA[Math.floor(Math.random() * MOCK_DATA.length)]}</div>`;
                 itemEl.appendChild(info);
-                
+
                 grid.appendChild(itemEl);
 
                 const itemObj = {
@@ -200,25 +283,31 @@
                     currentY: 0,
                     opacity: CONFIG.DEFAULT_OPACITY, 
                     isActive: false,
-                    freezeX: 0 
+                    screenCenterX: 0,
+                    screenCenterY: 0
                 };
 
-                itemEl.onclick = (e) => {
-                    e.stopPropagation();
-                    itemObj.isActive = !itemObj.isActive;
-                    if (itemObj.isActive) {
-                        itemObj.el.classList.add('active');
-                        itemObj.freezeX = getDisplayX(itemObj.baseX);
-                    } else {
-                        itemObj.el.classList.remove('active');
-                    }
-                };
-
+                itemEl.onclick = () => toggleActive(itemObj);
                 items.push(itemObj);
             }
         }
         items.forEach(i => { i.currentX = getDisplayX(i.baseX); i.currentY = i.baseY; });
         requestAnimationFrame(update);
+    }
+
+    function toggleActive(itemObj) {
+        const wasActive = itemObj.isActive;
+        items.forEach(it => {
+            it.isActive = false;
+            it.el.classList.remove('active');
+        });
+        if (!wasActive) {
+            const rect = itemObj.el.getBoundingClientRect();
+            itemObj.screenCenterX = rect.left + rect.width / 2;
+            itemObj.screenCenterY = rect.top + rect.height / 2;
+            itemObj.isActive = true;
+            itemObj.el.classList.add('active');
+        }
     }
 
     function getDisplayX(baseX) {
@@ -236,110 +325,163 @@
         globalScrollX -= CONFIG.SCROLL_SPEED;
         if (Math.abs(globalScrollX) >= totalWidth) globalScrollX = 0;
 
-        const activeItems = items.filter(i => i.isActive);
         const sw = window.innerWidth;
         const sh = window.innerHeight;
+        const activeItem = items.find(i => i.isActive);
+
+        cursorEl.style.left = `${gesturePos.x}px`;
+        cursorEl.style.top = `${gesturePos.y}px`;
+        cursorEl.style.background = isFist ? 'rgba(255,255,255,0.4)' : 'transparent';
+        cursorEl.style.transform = `translate(-50%, -50%) scale(${isFist ? 0.8 : 1})`;
+
+        let newHovered = null;
 
         items.forEach(item => {
             const gridX = getDisplayX(item.baseX);
             const gridY = item.baseY;
-
             let targetTX, targetTY, targetScale, targetOpacity, targetZ;
 
             if (item.isActive) {
                 targetScale = CONFIG.ENLARGE_SCALE;
-                targetZ = 600;
+                targetZ = 1200;
                 targetOpacity = 1;
-                
-                // 1. 基础物理坐标
-                let tx = item.freezeX;
-                let ty = item.baseY;
-
-                // 2. 实时计算放大后的实际物理边界
-                // 计算规则：中心缩放，所以边界是 (中心坐标 +/- 半宽)
-                const halfW = (CONFIG.WIDTH * targetScale) / 2;
-                const halfH = (CONFIG.HEIGHT * targetScale) / 2;
-                const centerX = tx + CONFIG.WIDTH / 2;
-                const centerY = ty + CONFIG.HEIGHT / 2;
-
-                const scaledTop = centerY - halfH;
-                const scaledBottom = centerY + halfH + 15; // 预留文字空间
-                const scaledLeft = centerX - halfW;
-                const scaledRight = centerX + halfW;
-
-                // 3. 吸附校正
-                if (scaledTop < CONFIG.VIEWPORT_MARGIN) {
-                    ty += (CONFIG.VIEWPORT_MARGIN - scaledTop);
-                }
-                if (scaledBottom > sh - CONFIG.VIEWPORT_MARGIN) {
-                    ty -= (scaledBottom - (sh - CONFIG.VIEWPORT_MARGIN));
-                }
-                if (scaledLeft < CONFIG.VIEWPORT_MARGIN) {
-                    tx += (CONFIG.VIEWPORT_MARGIN - scaledLeft);
-                }
-                if (scaledRight > sw - CONFIG.VIEWPORT_MARGIN) {
-                    tx -= (scaledRight - (sw - CONFIG.VIEWPORT_MARGIN));
-                }
-
-                targetTX = tx;
-                targetTY = ty;
+                const halfVW = (CONFIG.WIDTH * targetScale) / 2;
+                const halfVH = (CONFIG.HEIGHT * targetScale) / 2;
+                let cx = item.screenCenterX;
+                let cy = item.screenCenterY;
+                if (cy - halfVH < CONFIG.SAFE_TOP) cy = CONFIG.SAFE_TOP + halfVH;
+                if (cy + halfVH + 30 > sh - CONFIG.SAFE_BOTTOM) cy = sh - CONFIG.SAFE_BOTTOM - 30 - halfVH;
+                if (cx - halfVW < CONFIG.SAFE_LEFT) cx = CONFIG.SAFE_LEFT + halfVW;
+                if (cx + halfVW > sw - CONFIG.SAFE_RIGHT) cx = sw - CONFIG.SAFE_RIGHT - halfVW;
+                targetTX = cx - CONFIG.WIDTH / 2;
+                targetTY = cy - CONFIG.HEIGHT / 2;
             } else {
                 targetTX = gridX;
                 targetTY = gridY;
                 targetScale = 1;
                 targetZ = 0;
 
-                let pushX = 0;
-                let pushY = 0;
-                let minAlpha = CONFIG.DEFAULT_OPACITY;
+                if (isFist) {
+                    const distToCursor = Math.sqrt(Math.pow(targetTX + CONFIG.WIDTH/2 - gesturePos.x, 2) + Math.pow(targetTY + CONFIG.HEIGHT/2 - gesturePos.y, 2));
+                    if (distToCursor < 35) {
+                        newHovered = item;
+                        targetScale = 1.25;
+                        targetOpacity = 1;
+                    }
+                }
 
-                activeItems.forEach(active => {
-                    const ax = active.freezeX + CONFIG.WIDTH / 2;
-                    const ay = active.baseY + CONFIG.HEIGHT / 2;
+                let pushX = 0; pushY = 0;
+                let minAlpha = CONFIG.DEFAULT_OPACITY;
+                if (activeItem) {
+                    const ax = activeItem.currentX + CONFIG.WIDTH / 2;
+                    const ay = activeItem.currentY + CONFIG.HEIGHT / 2;
                     const ix = gridX + CONFIG.WIDTH / 2;
                     const iy = gridY + CONFIG.HEIGHT / 2;
-
-                    let dx = ix - ax;
-                    let dy = iy - ay;
-
-                    if (dx > totalWidth / 2) dx -= totalWidth;
-                    if (dx < -totalWidth / 2) dx += totalWidth;
-
+                    let dx = ix - ax; let dy = iy - ay;
+                    if (dx > sw / 2) dx -= sw; if (dx < -sw / 2) dx += sw;
                     const dist = Math.sqrt(dx * dx + dy * dy);
-
                     if (dist < CONFIG.RADIATE_DISTANCE) {
                         const ratio = 1 - (dist / CONFIG.RADIATE_DISTANCE);
-                        const force = Math.pow(ratio, 2) * CONFIG.PUSH_STRENGTH;
-                        const angle = Math.atan2(dy, dx);
-                        
-                        pushX += Math.cos(angle) * force;
-                        pushY += Math.sin(angle) * force;
-                        
-                        const alpha = 0.2 + (1 - ratio) * 0.4;
-                        if (alpha < minAlpha) minAlpha = alpha;
+                        pushX += Math.cos(Math.atan2(dy, dx)) * Math.pow(ratio, 2) * CONFIG.PUSH_STRENGTH;
+                        pushY += Math.sin(Math.atan2(dy, dx)) * Math.pow(ratio, 2) * CONFIG.PUSH_STRENGTH;
+                        minAlpha = 0.2 + (1 - ratio) * 0.4;
                     }
-                });
-
-                targetTX += pushX;
-                targetTY += pushY;
-                targetOpacity = activeItems.length > 0 ? minAlpha : CONFIG.DEFAULT_OPACITY;
-                targetScale = activeItems.length > 0 ? (minAlpha < 0.4 ? 0.85 : 1) : 1;
+                    targetOpacity = Math.min(targetOpacity || 1, minAlpha);
+                    targetScale = Math.min(targetScale || 1, 0.85);
+                } else {
+                    targetOpacity = targetOpacity || CONFIG.DEFAULT_OPACITY;
+                }
+                targetTX += pushX; targetTY += pushY;
             }
 
-            if (!item.isActive && Math.abs(targetTX - item.currentX) > totalWidth / 2) {
-                item.currentX = targetTX;
-            }
-
+            if (!item.isActive && Math.abs(targetTX - item.currentX) > sw * 0.5) item.currentX = targetTX;
             item.currentX = lerp(item.currentX, targetTX, CONFIG.LERP_FACTOR);
             item.currentY = lerp(item.currentY, targetTY, CONFIG.LERP_FACTOR);
             item.opacity = lerp(item.opacity, targetOpacity, CONFIG.LERP_FACTOR);
 
             item.el.style.transform = `translate3d(${item.currentX}px, ${item.currentY}px, ${targetZ}px) scale(${targetScale})`;
             item.el.style.opacity = item.opacity;
-            item.el.style.zIndex = item.isActive ? 2000 : 1;
         });
 
+        if (newHovered !== hoveredItem) {
+            if (hoveredItem) hoveredItem.el.classList.remove('hovered');
+            if (newHovered) newHovered.el.classList.add('hovered');
+            hoveredItem = newHovered;
+        }
+
         requestAnimationFrame(update);
+    }
+
+    startBtn.onclick = () => {
+        startBtn.innerText = "正在请求权限...";
+        initGestures();
+    };
+
+    function initGestures() {
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        let lastGesture = 'none';
+        let gestureCounter = 0;
+
+        hands.onResults((results) => {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                gesturePos.x = (1 - landmarks[8].x) * window.innerWidth;
+                gesturePos.y = landmarks[8].y * window.innerHeight;
+
+                const isFistNow = [8, 12, 16, 20].every(id => {
+                    const dx = landmarks[id].x - landmarks[9].x;
+                    const dy = landmarks[id].y - landmarks[9].y;
+                    return Math.sqrt(dx*dx + dy*dy) < 0.12; 
+                });
+
+                const currentType = isFistNow ? 'fist' : 'palm';
+                if (currentType === lastGesture) gestureCounter++; else { gestureCounter = 0; lastGesture = currentType; }
+
+                if (gestureCounter > 5) {
+                    if (currentType === 'palm' && isFist) {
+                        if (hoveredItem) toggleActive(hoveredItem);
+                        else items.forEach(it => { it.isActive = false; it.el.classList.remove('active'); });
+                    }
+                    isFist = (currentType === 'fist');
+                }
+            }
+            canvasCtx.restore();
+        });
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({ image: videoElement }); },
+            width: 640, height: 480
+        });
+
+        camera.start()
+            .then(() => {
+                setupOverlay.style.display = 'none';
+                document.getElementById('video-container').style.display = 'block';
+                cursorEl.style.display = 'block';
+            })
+            .catch(err => {
+                startBtn.innerText = "重新尝试";
+                errorMsg.style.display = 'block';
+                errorMsg.innerText = "无法获取摄像头: " + err.name + ". 请在浏览器设置中允许权限并刷新页面。";
+            });
     }
 
     window.onresize = init;
