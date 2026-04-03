@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nano Matrix // Pinch Trigger UX V20.0</title>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <title>Nano Matrix // Cursor Sync V31.0</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@200;300;400&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <style>
         body {
             margin: 0;
-            background-color: #080808;
+            background-color: #050505; 
             color: white;
             overflow: hidden;
             font-family: 'Montserrat', sans-serif;
@@ -26,15 +26,17 @@
             width: 100vw;
             height: 100vh;
             overflow: hidden;
+            /* 隐藏默认鼠标指针，使用自定义光标 */
+            cursor: none; 
         }
 
         .item {
             position: absolute;
             width: 60px; 
             height: 45px; 
-            background-color: #222;
-            border-radius: 3px;
-            cursor: pointer;
+            background-color: #111;
+            border-radius: 0; 
+            cursor: none; /* 保持全局无指针感 */
             z-index: 10;
             will-change: transform;
             transform-origin: center center;
@@ -45,16 +47,16 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            border-radius: 3px;
             pointer-events: none;
+            background: #000;
         }
 
         .item img {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            filter: brightness(0.8);
-            transition: filter 0.4s;
+            filter: brightness(1); 
+            transition: filter 0.6s cubic-bezier(0.23, 1, 0.32, 1);
         }
 
         .item.active {
@@ -62,118 +64,92 @@
         }
 
         .item.active img {
-            filter: brightness(1.1);
-            box-shadow: 0 0 40px rgba(255,255,255,0.3);
+            filter: brightness(1.1); 
+            box-shadow: 0 30px 100px rgba(0,0,0,1);
         }
 
         .info-content {
             position: absolute;
-            top: 110%;
+            top: 110%; 
             left: 50%;
-            transform: translateX(-50%) translateZ(0); 
             text-align: center;
             opacity: 0;
-            width: 200px;
+            width: 500px;
             pointer-events: none;
-            font-size: 11px;
-            font-weight: 500;
-            letter-spacing: 1.5px;
-            color: #ffffff;
+            font-size: 9px; 
+            font-weight: 300; 
+            letter-spacing: 5px; 
+            color: rgba(255, 255, 255, 0.8); 
             text-transform: uppercase;
-            text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+            transform: translateX(-50%) scale(1);
+            transform-origin: top center;
+            transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.23, 1, 0.32, 1);
         }
 
         .item.active .info-content {
             opacity: 1;
-            transition: opacity 0.4s ease-out 0.1s;
+            transform: translateX(-50%) scale(0.2); 
+            margin-top: 12px; 
         }
-
-        #setup-overlay {
-            position: fixed;
-            inset: 0;
-            background: #000;
-            z-index: 100000;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .btn {
-            padding: 15px 40px;
-            border: 1px solid rgba(255,255,255,0.3);
-            margin: 10px;
-            cursor: pointer;
-            text-transform: uppercase;
-            font-size: 13px;
-            letter-spacing: 3px;
-            transition: all 0.3s;
-        }
-        .btn:hover { border-color: white; background: rgba(255,255,255,0.1); }
 
         #cursor {
             position: fixed;
-            width: 30px;
-            height: 30px;
-            border: 1px solid rgba(255,255,255,0.6);
+            width: 18px;
+            height: 18px;
+            border: 0.8px solid rgba(255,255,255,0.6); /* 略微增强对比度 */
             border-radius: 50%;
             pointer-events: none;
             z-index: 10001;
             display: none;
             transform: translate(-50%, -50%);
-            transition: width 0.2s, height 0.2s, background-color 0.2s;
+            /* 位置移动时不使用 transition 保证实时感，仅在状态切换时使用动画 */
+            transition: width 0.3s, height 0.3s, background-color 0.3s;
+            mix-blend-mode: difference; /* 确保在亮部也清晰可见 */
         }
         
         #cursor.pinched {
-            width: 12px;
-            height: 12px;
+            width: 6px;
+            height: 6px;
             background-color: #fff;
             border-color: #fff;
-            box-shadow: 0 0 20px rgba(255,255,255,0.8);
         }
 
         #gesture-hint {
             position: fixed;
             bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 10px;
-            letter-spacing: 2px;
-            opacity: 0.6;
+            left: 30px;
+            font-size: 7px;
+            letter-spacing: 3px;
+            opacity: 0.3;
             text-transform: uppercase;
             pointer-events: none;
-            text-align: center;
-            line-height: 1.8;
+            text-align: left;
+            line-height: 2;
         }
     </style>
 </head>
 <body>
 
-<div id="setup-overlay">
-    <h1 style="margin-bottom: 30px; letter-spacing: 10px; font-weight: 300;">MATRIX V20</h1>
-    <div style="display:flex;">
-        <div class="btn" onclick="start('mouse')">MOUSE</div>
-        <div class="btn" onclick="start('gesture')" style="background:white; color:black; border:none;">GESTURE</div>
-    </div>
-</div>
-
 <div id="stage">
     <div id="grid"></div>
     <div id="cursor"></div>
-    <div id="gesture-hint">PINCH TO OPEN OR CLOSE<br>SWIPE HAND TO SCROLL GALLERY</div>
+    <div id="gesture-hint">
+        SYSTEM: INITIALIZING...<br>
+        CONTROL: MOUSE ENABLED
+    </div>
 </div>
 
 <script>
     const CONFIG = {
-        W: 60, H: 45, GAP_X: 18, GAP_Y: 15,
+        W: 60, H: 45, GAP_X: 22, GAP_Y: 20,
         ROWS: 16, 
-        BASE_SPEED: 0.15, 
-        SCALE: 3.0, 
-        LERP: 0.1, 
-        REPULSION_RADIUS: 320, 
-        REPULSION_STRENGTH: 130,
-        FRICTION: 0.94,
-        PINCH_THRESHOLD: 0.04 // 判定捏合的距离阈值
+        BASE_SPEED: 0.25,
+        SCALE: 5.0, 
+        LERP: 0.08, 
+        REPULSION_RADIUS: 500, 
+        REPULSION_STRENGTH: 240,
+        FRICTION: 0.93,
+        PINCH_THRESHOLD: 0.04 
     };
 
     let items = [];
@@ -181,17 +157,30 @@
     let velocityX = 0; 
     let totalW = 0;
     let mouse = { x: -100, y: -100 };
-    let activeLeft = null;
-    let activeRight = null;
+    let activeItem = null;
 
-    function init() {
+    function bootstrap() {
+        initGrid();
+        initMouse();
+        initGestures().catch(err => {
+            console.log("Gesture control unavailable:", err);
+            updateStatus("SYSTEM: ONLINE / MOUSE ONLY");
+        });
+        update();
+    }
+
+    function updateStatus(text) {
+        document.getElementById('gesture-hint').innerHTML = text;
+    }
+
+    function initGrid() {
         const sw = window.innerWidth;
         const sh = window.innerHeight;
         const grid = document.getElementById('grid');
         grid.innerHTML = '';
         items = [];
 
-        const cols = Math.ceil(sw / (CONFIG.W + CONFIG.GAP_X)) + 18;
+        const cols = Math.ceil(sw / (CONFIG.W + CONFIG.GAP_X)) + 22;
         totalW = cols * (CONFIG.W + CONFIG.GAP_X);
         const gridH = CONFIG.ROWS * (CONFIG.H + CONFIG.GAP_Y);
         const startY = (sh - gridH) / 2;
@@ -205,56 +194,75 @@
                 const bx = c * (CONFIG.W + CONFIG.GAP_X) + rowOffset;
                 const by = startY + r * (CONFIG.H + CONFIG.GAP_Y) + CONFIG.H/2;
 
+                const seed = r * cols + c;
                 el.innerHTML = `
                     <div class="img-wrapper">
-                        <img src="https://picsum.photos/seed/${r*cols+c}/200/150">
+                        <img src="https://picsum.photos/seed/${seed}/200/150">
                     </div>
-                    <div class="info-content">NODE DATA 0${r}${c}</div>
+                    <div class="info-content">NODE ${r}${c} // SOURCE ARCHIVE</div>
                 `;
 
                 grid.appendChild(el);
 
                 const itemObj = {
                     el: el, bx: bx, by: by, cx: bx, cy: by,
-                    active: false, scale: 1, side: 'LEFT'
+                    active: false, scale: 1, seed: seed
                 };
 
                 el.addEventListener('click', () => handleSelect(itemObj));
                 items.push(itemObj);
             }
         }
-        update();
+    }
+
+    function initMouse() {
+        const cursorEl = document.getElementById('cursor');
+        window.addEventListener('mousemove', e => {
+            mouse.x = e.clientX; 
+            mouse.y = e.clientY;
+            
+            // 确保光标元素实时跟随并显示
+            cursorEl.style.display = 'block';
+            cursorEl.style.left = mouse.x + 'px';
+            cursorEl.style.top = mouse.y + 'px';
+        });
+
+        // 鼠标离开窗口隐藏光标
+        window.addEventListener('mouseleave', () => {
+            cursorEl.style.display = 'none';
+        });
     }
 
     function handleSelect(obj) {
-        const sw = window.innerWidth;
-        
+        const img = obj.el.querySelector('img');
+
         if (obj.active) {
             obj.active = false;
             obj.el.classList.remove('active');
-            if (obj.side === 'LEFT') activeLeft = null;
-            else activeRight = null;
+            activeItem = null;
             return;
         }
 
-        let gx = (obj.bx + scrollX) % totalW;
-        if (gx < -CONFIG.W) gx += totalW;
-        if (gx > totalW - CONFIG.W) gx -= totalW;
-        const currentScreenX = gx + CONFIG.W / 2;
-        const side = (currentScreenX < sw / 2) ? 'LEFT' : 'RIGHT';
-
-        if (side === 'LEFT') {
-            if (activeLeft) { activeLeft.active = false; activeLeft.el.classList.remove('active'); }
-            obj.side = 'LEFT'; obj.active = true; obj.el.classList.add('active'); activeLeft = obj;
-        } else {
-            if (activeRight) { activeRight.active = false; activeRight.el.classList.remove('active'); }
-            obj.side = 'RIGHT'; obj.active = true; obj.el.classList.add('active'); activeRight = obj;
+        if (activeItem) {
+            activeItem.active = false;
+            activeItem.el.classList.remove('active');
         }
+
+        const hdUrl = `https://picsum.photos/seed/${obj.seed}/1600/1200`;
+        const tempImg = new Image();
+        tempImg.src = hdUrl;
+        tempImg.onload = () => {
+            if (obj.active) img.src = hdUrl;
+        };
+
+        obj.active = true;
+        obj.el.classList.add('active');
+        activeItem = obj;
     }
 
     function update() {
-        if (Math.abs(velocityX) < 0.1) {
-            velocityX = -CONFIG.BASE_SPEED;
+        if (Math.abs(velocityX) < Math.abs(CONFIG.BASE_SPEED)) {
+            velocityX = lerp(velocityX, -CONFIG.BASE_SPEED, 0.05);
         } else {
             velocityX *= CONFIG.FRICTION;
         }
@@ -267,44 +275,36 @@
         const sh = window.innerHeight;
 
         items.forEach(item => {
-            let baseTX, baseTY, ts;
             let gx = (item.bx + scrollX) % totalW;
             if (gx < -CONFIG.W) gx += totalW;
             if (gx > totalW - CONFIG.W) gx -= totalW;
-            baseTX = gx + CONFIG.W / 2;
-            baseTY = item.by;
+            
+            let baseTX = gx + CONFIG.W / 2;
+            let baseTY = item.by;
 
             let finalTX = baseTX;
             let finalTY = baseTY;
-            ts = 1;
+            let ts = 1;
 
             if (item.active) {
-                const targetZoneX = (item.side === 'LEFT') ? sw * 0.25 : sw * 0.75;
-                const targetZoneY = sh * 0.5;
-                finalTX = targetZoneX;
-                finalTY = targetZoneY;
+                finalTX = sw / 2;
+                finalTY = sh / 2;
                 ts = CONFIG.SCALE;
             } else {
-                let totalDX = 0;
-                let totalDY = 0;
-                [activeLeft, activeRight].forEach(activeItem => {
-                    if (activeItem) {
-                        const dx = baseTX - activeItem.cx;
-                        const dy = baseTY - activeItem.cy;
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-                        if (dist < CONFIG.REPULSION_RADIUS) {
-                            const force = (1 - dist / CONFIG.REPULSION_RADIUS);
-                            totalDX += (dx / dist) * force * CONFIG.REPULSION_STRENGTH;
-                            totalDY += (dy / dist) * force * CONFIG.REPULSION_STRENGTH;
-                            ts *= (1 - force * 0.08);
-                        }
+                if (activeItem) {
+                    const dx = baseTX - activeItem.cx;
+                    const dy = baseTY - activeItem.cy;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < CONFIG.REPULSION_RADIUS) {
+                        const force = (1 - dist / CONFIG.REPULSION_RADIUS);
+                        finalTX += (dx / dist) * force * CONFIG.REPULSION_STRENGTH;
+                        finalTY += (dy / dist) * force * CONFIG.REPULSION_STRENGTH;
+                        ts *= (1 - force * 0.35); 
                     }
-                });
-                finalTX += totalDX;
-                finalTY += totalDY;
-                if (!activeLeft && !activeRight) {
+                } else {
                     const dMouse = Math.sqrt(Math.pow(baseTX - mouse.x, 2) + Math.pow(baseTY - mouse.y, 2));
-                    if (dMouse < 50) ts = 1.25;
+                    if (dMouse < 40) ts = 1.25;
                 }
             }
 
@@ -313,6 +313,7 @@
             item.cx = lerp(item.cx, finalTX, CONFIG.LERP);
             item.cy = lerp(item.cy, finalTY, CONFIG.LERP);
             item.scale = lerp(item.scale, ts, CONFIG.LERP);
+            
             item.el.style.transform = `translate3d(${item.cx}px, ${item.cy}px, 0) translate(-50%, -50%) scale(${item.scale})`;
         });
 
@@ -321,19 +322,7 @@
 
     function lerp(a, b, f) { return a + (b - a) * f; }
 
-    function start(mode) {
-        document.getElementById('setup-overlay').style.display = 'none';
-        if (mode === 'mouse') {
-            window.addEventListener('mousemove', e => {
-                mouse.x = e.clientX; mouse.y = e.clientY;
-            });
-            document.getElementById('cursor').style.display = 'block';
-        } else {
-            initGestures();
-        }
-    }
-
-    function initGestures() {
+    async function initGestures() {
         const videoElement = document.createElement('video');
         videoElement.style.display = 'none';
         document.body.appendChild(videoElement);
@@ -355,45 +344,44 @@
                 const indexTip = lm[8];
                 const palmCenter = lm[9]; 
                 
-                // 1. 光标跟随 (食指指尖)
                 mouse.x = (1 - indexTip.x) * window.innerWidth;
                 mouse.y = indexTip.y * window.innerHeight;
+                
+                // 同步更新光标位置
                 cursorEl.style.display = 'block';
+                cursorEl.style.left = mouse.x + 'px';
+                cursorEl.style.top = mouse.y + 'px';
 
-                // 2. 捏合识别 (Pinch) - 选中或关闭
                 const dist = Math.sqrt(
                     Math.pow(thumbTip.x - indexTip.x, 2) + 
                     Math.pow(thumbTip.y - indexTip.y, 2)
                 );
 
                 if (dist < CONFIG.PINCH_THRESHOLD) {
-                    if (!isPinching) { // 边缘触发：刚捏合的瞬间
+                    if (!isPinching) {
                         isPinching = true;
-                        cursorEl.classList.add('pinched');
-                        
-                        if (now - lastAction > 500) {
+                        if (now - lastAction > 800) {
                             const target = items.find(i => {
                                 const d = Math.sqrt(Math.pow(i.cx - mouse.x, 2) + Math.pow(i.cy - mouse.y, 2));
-                                return i.active ? d < 120 : d < 60;
+                                return i.active ? d < 200 : d < 60;
                             });
                             if (target) handleSelect(target);
                             lastAction = now;
                         }
                     }
+                    cursorEl.classList.add('pinched');
                 } else {
                     isPinching = false;
                     cursorEl.classList.remove('pinched');
                 }
 
-                // 3. 挥手滚动 (Swipe)
-                if (!activeLeft && !activeRight) {
+                if (!activeItem) {
                     xHistory.push(palmCenter.x);
                     if (xHistory.length > 10) xHistory.shift();
-                    
                     if (xHistory.length >= 10 && !isPinching) {
                         const swipeX = xHistory[xHistory.length - 1] - xHistory[0];
                         if (Math.abs(swipeX) > 0.15) {
-                            velocityX = swipeX * 70; 
+                            velocityX = swipeX * 120;
                             xHistory = []; 
                         }
                     }
@@ -401,15 +389,20 @@
             }
         });
 
-        const camera = new Camera(videoElement, {
-            onFrame: async () => { await hands.send({ image: videoElement }); },
-            width: 640, height: 480
-        });
-        camera.start();
+        try {
+            const camera = new Camera(videoElement, {
+                onFrame: async () => { await hands.send({ image: videoElement }); },
+                width: 640, height: 480
+            });
+            await camera.start();
+            updateStatus("SYSTEM: ONLINE<br>CONTROL: MOUSE + GESTURE ENABLED");
+        } catch (e) {
+            throw e;
+        }
     }
 
-    window.onload = init;
-    window.onresize = () => init();
+    window.onload = bootstrap;
+    window.onresize = () => initGrid();
 </script>
 
 </body>
