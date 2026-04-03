@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nano Matrix // Perfect Contain V4.7</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            background-color: #050505;
+            color: white;
+            overflow: hidden;
+            font-family: 'Montserrat', "PingFang SC", sans-serif;
+            touch-action: none;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        #stage {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            perspective: 2000px;
+        }
+
+        .grid-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transform-style: preserve-3d;
+        }
+
+        .item {
+            position: absolute;
+            width: 50px; 
+            height: 38px; 
+            background-color: #111;
+            border-radius: 1px;
+            overflow: visible;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+            transition: box-shadow 0.4s ease;
+            cursor: pointer;
+            z-index: 1;
+            will-change: transform, opacity;
+            transform-origin: center center;
+        }
+
+        .img-wrapper {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            border-radius: 1px;
+            position: relative;
+        }
+
+        .item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            pointer-events: none;
+            filter: brightness(0.8);
+            transition: filter 0.4s ease;
+        }
+
+        .item.active {
+            z-index: 1000 !important;
+            box-shadow: 0 20px 80px rgba(0, 0, 0, 1);
+        }
+
+        .item.active img {
+            filter: brightness(1.2);
+        }
+
+        /* 优化文字间距：减少 padding 并在激活时上提 */
+        .info-content {
+            position: absolute;
+            top: 100%; 
+            left: 0;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            opacity: 0;
+            padding-top: 4px; /* 进一步缩小间距 */
+            transform: translateY(-2px);
+            transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s;
+            pointer-events: none;
+        }
+
+        .item.active .info-content {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .info-title {
+            font-size: 10px; 
+            transform: scale(0.45); 
+            transform-origin: center top;
+            font-weight: 400; 
+            color: rgba(255, 255, 255, 0.9); 
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            line-height: 1;
+            white-space: nowrap;
+        }
+
+        .ui-overlay {
+            position: fixed;
+            bottom: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255,255,255,0.02);
+            backdrop-filter: blur(8px);
+            padding: 0.3rem 0.8rem;
+            border-radius: 99px;
+            pointer-events: none;
+            z-index: 2000;
+            font-size: 8px;
+            color: rgba(255,255,255,0.15);
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="stage">
+    <div class="grid-container" id="grid"></div>
+    <div class="ui-overlay">MATRIX V4.7 // PERFECT EDGE CONTAINMENT</div>
+</div>
+
+<script>
+    const CONFIG = {
+        WIDTH: 50,      
+        HEIGHT: 38,     
+        GAP_X: 12,               
+        GAP_Y: 10,
+        TARGET_ROWS: 16,
+        SCROLL_SPEED: 0.15,
+        RADIATE_DISTANCE: 160,   
+        PUSH_STRENGTH: 70,       
+        ENLARGE_SCALE: 3.2,    
+        LERP_FACTOR: 0.12,    
+        DEFAULT_OPACITY: 0.8,
+        VIEWPORT_MARGIN: 15 // 缩小页边距，让画面利用率更高
+    };
+
+    const MOCK_DATA = ["CHRONICLE", "STRUCTURE", "ELEMENT", "CHRONO", "VOID", "GEOMETRY", "LIGHT", "MATTER", "PULSE", "ZENITH"];
+
+    const grid = document.getElementById('grid');
+    let items = [];
+    let globalScrollX = 0;     
+    let totalWidth = 0;
+
+    function init() {
+        grid.innerHTML = '';
+        items = [];
+        const sw = window.innerWidth;
+        const sh = window.innerHeight;
+
+        const rows = CONFIG.TARGET_ROWS + 4;
+        const cols = Math.ceil(sw / (CONFIG.WIDTH + CONFIG.GAP_X)) + 14; 
+        totalWidth = cols * (CONFIG.WIDTH + CONFIG.GAP_X);
+
+        const gridTotalHeight = rows * (CONFIG.HEIGHT + CONFIG.GAP_Y) - CONFIG.GAP_Y;
+        const startY = (sh - gridTotalHeight) / 2;
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const itemEl = document.createElement('div');
+                itemEl.className = 'item';
+                
+                const rowOffset = (r % 2 === 0) ? 0 : (CONFIG.WIDTH + CONFIG.GAP_X) / 2;
+                const baseX = c * (CONFIG.WIDTH + CONFIG.GAP_X) + rowOffset;
+                const baseY = startY + r * (CONFIG.HEIGHT + CONFIG.GAP_Y);
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'img-wrapper';
+                const img = document.createElement('img');
+                img.src = `https://picsum.photos/seed/${Math.floor(Math.random() * 10000)}/140/100`;
+                wrapper.appendChild(img);
+                itemEl.appendChild(wrapper);
+
+                const titleText = MOCK_DATA[Math.floor(Math.random() * MOCK_DATA.length)];
+                const info = document.createElement('div');
+                info.className = 'info-content';
+                info.innerHTML = `<div class="info-title">${titleText}</div>`;
+                itemEl.appendChild(info);
+                
+                grid.appendChild(itemEl);
+
+                const itemObj = {
+                    el: itemEl,
+                    baseX: baseX,
+                    baseY: baseY,
+                    currentX: 0, 
+                    currentY: 0,
+                    opacity: CONFIG.DEFAULT_OPACITY, 
+                    isActive: false,
+                    freezeX: 0 
+                };
+
+                itemEl.onclick = (e) => {
+                    e.stopPropagation();
+                    itemObj.isActive = !itemObj.isActive;
+                    if (itemObj.isActive) {
+                        itemObj.el.classList.add('active');
+                        itemObj.freezeX = getDisplayX(itemObj.baseX);
+                    } else {
+                        itemObj.el.classList.remove('active');
+                    }
+                };
+
+                items.push(itemObj);
+            }
+        }
+        items.forEach(i => { i.currentX = getDisplayX(i.baseX); i.currentY = i.baseY; });
+        requestAnimationFrame(update);
+    }
+
+    function getDisplayX(baseX) {
+        let x = (baseX + globalScrollX) % totalWidth;
+        if (x < -CONFIG.WIDTH * 2) x += totalWidth;
+        if (x > totalWidth - CONFIG.WIDTH * 2) x -= totalWidth;
+        return x;
+    }
+
+    function lerp(start, end, factor) {
+        return start + (end - start) * factor;
+    }
+
+    function update() {
+        globalScrollX -= CONFIG.SCROLL_SPEED;
+        if (Math.abs(globalScrollX) >= totalWidth) globalScrollX = 0;
+
+        const activeItems = items.filter(i => i.isActive);
+        const sw = window.innerWidth;
+        const sh = window.innerHeight;
+
+        items.forEach(item => {
+            const gridX = getDisplayX(item.baseX);
+            const gridY = item.baseY;
+
+            let targetTX, targetTY, targetScale, targetOpacity, targetZ;
+
+            if (item.isActive) {
+                targetScale = CONFIG.ENLARGE_SCALE;
+                targetZ = 600;
+                targetOpacity = 1;
+                
+                // 1. 基础物理坐标
+                let tx = item.freezeX;
+                let ty = item.baseY;
+
+                // 2. 实时计算放大后的实际物理边界
+                // 计算规则：中心缩放，所以边界是 (中心坐标 +/- 半宽)
+                const halfW = (CONFIG.WIDTH * targetScale) / 2;
+                const halfH = (CONFIG.HEIGHT * targetScale) / 2;
+                const centerX = tx + CONFIG.WIDTH / 2;
+                const centerY = ty + CONFIG.HEIGHT / 2;
+
+                const scaledTop = centerY - halfH;
+                const scaledBottom = centerY + halfH + 15; // 预留文字空间
+                const scaledLeft = centerX - halfW;
+                const scaledRight = centerX + halfW;
+
+                // 3. 吸附校正
+                if (scaledTop < CONFIG.VIEWPORT_MARGIN) {
+                    ty += (CONFIG.VIEWPORT_MARGIN - scaledTop);
+                }
+                if (scaledBottom > sh - CONFIG.VIEWPORT_MARGIN) {
+                    ty -= (scaledBottom - (sh - CONFIG.VIEWPORT_MARGIN));
+                }
+                if (scaledLeft < CONFIG.VIEWPORT_MARGIN) {
+                    tx += (CONFIG.VIEWPORT_MARGIN - scaledLeft);
+                }
+                if (scaledRight > sw - CONFIG.VIEWPORT_MARGIN) {
+                    tx -= (scaledRight - (sw - CONFIG.VIEWPORT_MARGIN));
+                }
+
+                targetTX = tx;
+                targetTY = ty;
+            } else {
+                targetTX = gridX;
+                targetTY = gridY;
+                targetScale = 1;
+                targetZ = 0;
+
+                let pushX = 0;
+                let pushY = 0;
+                let minAlpha = CONFIG.DEFAULT_OPACITY;
+
+                activeItems.forEach(active => {
+                    const ax = active.freezeX + CONFIG.WIDTH / 2;
+                    const ay = active.baseY + CONFIG.HEIGHT / 2;
+                    const ix = gridX + CONFIG.WIDTH / 2;
+                    const iy = gridY + CONFIG.HEIGHT / 2;
+
+                    let dx = ix - ax;
+                    let dy = iy - ay;
+
+                    if (dx > totalWidth / 2) dx -= totalWidth;
+                    if (dx < -totalWidth / 2) dx += totalWidth;
+
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < CONFIG.RADIATE_DISTANCE) {
+                        const ratio = 1 - (dist / CONFIG.RADIATE_DISTANCE);
+                        const force = Math.pow(ratio, 2) * CONFIG.PUSH_STRENGTH;
+                        const angle = Math.atan2(dy, dx);
+                        
+                        pushX += Math.cos(angle) * force;
+                        pushY += Math.sin(angle) * force;
+                        
+                        const alpha = 0.2 + (1 - ratio) * 0.4;
+                        if (alpha < minAlpha) minAlpha = alpha;
+                    }
+                });
+
+                targetTX += pushX;
+                targetTY += pushY;
+                targetOpacity = activeItems.length > 0 ? minAlpha : CONFIG.DEFAULT_OPACITY;
+                targetScale = activeItems.length > 0 ? (minAlpha < 0.4 ? 0.85 : 1) : 1;
+            }
+
+            if (!item.isActive && Math.abs(targetTX - item.currentX) > totalWidth / 2) {
+                item.currentX = targetTX;
+            }
+
+            item.currentX = lerp(item.currentX, targetTX, CONFIG.LERP_FACTOR);
+            item.currentY = lerp(item.currentY, targetTY, CONFIG.LERP_FACTOR);
+            item.opacity = lerp(item.opacity, targetOpacity, CONFIG.LERP_FACTOR);
+
+            item.el.style.transform = `translate3d(${item.currentX}px, ${item.currentY}px, ${targetZ}px) scale(${targetScale})`;
+            item.el.style.opacity = item.opacity;
+            item.el.style.zIndex = item.isActive ? 2000 : 1;
+        });
+
+        requestAnimationFrame(update);
+    }
+
+    window.onresize = init;
+    init();
+</script>
+
+</body>
+</html>
